@@ -2,7 +2,9 @@
 *.swp
 
 *.pyc
+*.png
 
+starfish_env/
 docs/_build/
 libraries
 output

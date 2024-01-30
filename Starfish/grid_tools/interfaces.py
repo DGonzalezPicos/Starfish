@@ -230,7 +230,7 @@ class IsoPHOENIXGridInterface(GridInterface):
             points=[
                 np.arange(2300, 4900+100, 100),
                 np.arange(3.0, 5.5+0.5, 0.5),
-                np.array([-0.5, 0.5]),
+                np.array([-1.0, -0.5, 0.0, 0.5]),
                 np.arange(1, 301+15, 15),
                 # np.hstack([np.arange(1, 301+15, 15),
                 #            np.arange(100, 1500+50, 50)]),
@@ -254,7 +254,8 @@ class IsoPHOENIXGridInterface(GridInterface):
         self.par_dicts = [
             None,
             None,
-            {
+            {   -1.0: "-1.0",
+                -0.5: "-0.5",
                 0.0: "-0.0",
                 -0.5: "-0.5",
                 0.5: "+0.5",
