@@ -21,7 +21,7 @@ else:
 
 grid = IsoPHOENIXGridInterface(path, wl_range=k2166_wl_range)
 
-
+grid.load_flux([4100, 3.5, 0.5, 31])
 
 grid_name = "IsoPHOENIX_CRIRES_test.hdf5"
 creator = HDF5Creator(

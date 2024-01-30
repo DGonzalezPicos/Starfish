@@ -59,6 +59,8 @@ for f in files:
     
     mask = (wl >= ref_wl[0]) & (wl <= ref_wl[-1])
     assert np.allclose(wl[mask], ref_wl), f'Wavelengths do not match for {f.name}'
+    assert np.sum(np.isnan(flux[mask])) == 0, f'NaNs in flux for {f.name}'
+    
     
     write_file(out_path / f.name, flux[mask])
     print(f' - wrote {out_path / f.name}', end='\r')
