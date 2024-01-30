@@ -123,3 +123,9 @@ class WIYN_Hydra(Instrument):
 
     def __init__(self, name="WIYN_Hydra", FWHM=300.0, wl_range=(5500, 10500)):
         super().__init__(name=name, FWHM=FWHM, wl_range=wl_range)
+
+class CRIRES_K(Instrument):
+    """CRIRES+ K band instrument"""
+
+    def __init__(self, name="CRIRES_K", wl_range=(19000, 25000)):
+        super().__init__(name=name, FWHM=3.0, wl_range=wl_range)

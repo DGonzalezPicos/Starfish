@@ -5,6 +5,7 @@ import os
 import numpy as np
 from astropy.io import fits, ascii
 from scipy.interpolate import InterpolatedUnivariateSpline
+import h5py
 
 import Starfish.constants as C
 from Starfish.utils import create_log_lam_grid
@@ -200,6 +201,144 @@ class PHOENIXGridInterfaceNoAlpha(PHOENIXGridInterface):
             if param not in params:
                 raise ValueError("{} not in the grid points {}".format(param, params))
         return True
+    
+    
+    
+class IsoPHOENIXGridInterface(GridInterface):
+    """
+    An Interface to the PHOENIX/Husser synthetic library.
+
+    Note that the wavelengths in the spectra are in Angstrom and the flux are in :math:`F_\\lambda` as
+    :math:`erg/s/cm^2/cm`
+
+    Parameters
+    ----------
+    path : str or path-like
+        The path of the base of the IsoPHOENIX library
+    air : bool, optional
+        Whether the wavelengths are measured in air or not. Default is True
+    wl_range : tuple, optional
+        The (min, max) of the wavelengths, in :math:`\\AA`. Default is (19000, 25000), which is the full wavelength grid of CRIRES+ K2166.
+    """
+
+    def __init__(self, path, wl_range=(19000, 25000)):
+        import h5py
+
+        super().__init__(
+            name="IsoPHOENIX",
+            param_names=["T", "logg", "Z", "C_ratio"],
+            points=[
+                np.arange(2300, 4900+100, 100),
+                np.arange(3.0, 5.5+0.5, 0.5),
+                np.array([-0.5, 0.5]),
+                np.arange(1, 301+15, 15),
+                # np.hstack([np.arange(1, 301+15, 15),
+                #            np.arange(100, 1500+50, 50)]),
+            ],
+            wave_units="AA",
+            flux_units="erg/s/cm^2/cm",
+            air=False,
+            wl_range=wl_range,
+            path=path,
+        )  # wl_range used to be (2999, 13001)
+
+        # These dictionaries provide the link between numerical representation and the
+        # string representation for Z and alpha
+        
+        # C_ratio_range = np.arange()
+        # hacky way to get the correct isotope ratios corresponding to C or O
+        ratios_dict = {}
+        for point in self.points[-1]:
+            s = 'C' if (point-1) % 15 == 0 else 'O'
+            ratios_dict[point] = f'.{s}_ratio={point:03.0f}'
+        self.par_dicts = [
+            None,
+            None,
+            {
+                0.0: "-0.0",
+                -0.5: "-0.5",
+                0.5: "+0.5",
+            },
+            ratios_dict,
+            # None,
+        ]
+
+        wl_filename = os.path.join(self.path, "WAVE_PHOENIX-NewEra-ACES-COND-2023.h5")
+        fh5 = h5py.File(wl_filename,'r')
+        self.wl_full = fh5['WAVE'][()] # [Angstroms]
+        assert len(self.wl_full) > 0, "No wavelength vector loaded..."
+        
+        self.ind = (self.wl_full >= self.wl_range[0]) & (
+            self.wl_full <= self.wl_range[1]
+        )
+        self.wl = self.wl_full[self.ind]
+        
+    
+        self.rname = "Z{2:}/lte{0:0>5.0f}-{1:.2f}{2:}.PHOENIX-NewEra-ACES-COND-2023{3:}.h5"
+        self.full_rname = os.path.join(self.path, self.rname)
+        
+    def check_params(self, parameters):
+        # Bypass the alpha irregularities in the full grid
+        parameters = np.asarray(parameters)
+
+        if len(parameters) != len(self.param_names):
+            raise ValueError(
+                "Length of given parameters ({}) does not match length of grid parameters ({})".format(
+                    len(parameters), len(self.param_names)
+                )
+            )
+
+        for param, params in zip(parameters, self.points):
+            if param not in params:
+                raise ValueError("{} not in the grid points {}".format(param, params))
+        return True
+        
+        
+    def load_flux(self, parameters, header=False, norm=True):
+        self.check_params(parameters)  # Check to make sure that the keys are
+        # allowed and that the values are in the grid
+
+        # Create a list of the parameters to be fed to the format string
+        # optionally replacing arguments using the dictionaries, if the formatting
+        # of a certain parameter is tricky
+        str_parameters = []
+        for param, par_dict in zip(parameters, self.par_dicts):
+            if par_dict is None:
+                str_parameters.append(param)
+            else:
+                str_parameters.append(par_dict[param])
+
+        fname = self.full_rname.format(*str_parameters)
+
+        # Still need to check that file is in the grid, otherwise raise a C.GridError
+        # Read all metadata in from the FITS header, and append to spectrum
+        if not os.path.exists(fname):
+            raise ValueError("{} is not on disk.".format(fname))
+
+        fh5 = h5py.File(fname,'r')
+        # flux = fh5['FLUX'][()]
+        flux = 10.**fh5['PHOENIX_SPECTRUM/flux'][()]
+        fh5.close()
+
+        hdr = {}
+        hdr['FLUX_UNIT'] = 'erg/s/cm^2/cm'
+        
+        
+        # If we want to normalize the spectra, we must do it now since later we won't have the full EM range
+        if norm:
+            flux *= 1e-8  # convert from erg/cm^2/s/cm to erg/cm^2/s/A
+            F_bol = np.trapz(flux, self.wl_full)
+            # bolometric luminosity is always 1 L_sun
+            flux *= C.F_sun / F_bol
+            
+        # Add temp, logg, Z, alpha, norm to the metadata
+        hdr["norm"] = norm
+        hdr["air"] = self.air
+
+        if header:
+            return (flux[self.ind], hdr)
+        else:
+            return flux[self.ind]
 
 
 class KuruczGridInterface(GridInterface):

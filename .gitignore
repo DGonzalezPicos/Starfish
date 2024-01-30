@@ -31,6 +31,8 @@ run
 htmlcov/
 
 *.fits
+*.h5
+*.hdf5
 
 #LaTeX files
 *.aux
