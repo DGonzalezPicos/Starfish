@@ -267,6 +267,8 @@ class IsoPHOENIXGridInterface(GridInterface):
         wl_filename = os.path.join(self.path, "WAVE_PHOENIX-NewEra-ACES-COND-2023.h5")
         fh5 = h5py.File(wl_filename,'r')
         self.wl_full = fh5['WAVE'][()] # [Angstroms]
+        print(f' - Loaded wavelength grid from {wl_filename}')
+        print(f' - Wavelength range: {self.wl_full[0]:.2f} - {self.wl_full[-1]:.2f} A')
         assert len(self.wl_full) > 0, "No wavelength vector loaded..."
         
         self.ind = (self.wl_full >= self.wl_range[0]) & (
@@ -329,6 +331,12 @@ class IsoPHOENIXGridInterface(GridInterface):
         if norm:
             flux *= 1e-8  # convert from erg/cm^2/s/cm to erg/cm^2/s/A
             F_bol = np.trapz(flux, self.wl_full)
+            # F_bol = np.nan_to_num(F_bol, nan=0.0)
+            # assert np.isfinite(F_bol), f'F_bol is not finite: {F_bol}'
+            if not np.isfinite(F_bol):
+                bad_pixels = np.logical_not(np.isfinite(flux))
+                print(f' Invalid pixel fraction in F_bol {np.sum(bad_pixels) / len(flux)}')
+                raise ValueError(' F_bol is not finite: {F_bol} (params = {parameters})')
             # bolometric luminosity is always 1 L_sun
             flux *= C.F_sun / F_bol
             

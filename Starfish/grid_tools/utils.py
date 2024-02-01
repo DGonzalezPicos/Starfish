@@ -346,3 +346,13 @@ def idl_float(idl_num: str) -> float:
     """
     idl_str = idl_num.lower()
     return float(idl_str.replace("d", "e"))
+
+def blackbody(T, wave_cm):
+    # Planck spectrum for the given temperature in units of [erg cm^-3 s^-1]
+    h = 6.62607004e-27 # erg s
+    c = 2.99792458e10 # cm s^-1
+    kB = 1.38064852e-16 # erg K^-1
+    
+    bb  = 2*h*c**2/(wave_cm**5) 
+    bb *= 1/(np.exp(h*c/(wave_cm*kB*T)) - 1)
+    return bb
