@@ -203,6 +203,7 @@ class PHOENIXGridInterfaceNoAlpha(PHOENIXGridInterface):
         return True
     
     
+
     
 class IsoPHOENIXGridInterface(GridInterface):
     """
@@ -278,6 +279,137 @@ class IsoPHOENIXGridInterface(GridInterface):
         
     
         self.rname = "Z{2:}/lte{0:0>5.0f}-{1:.2f}{2:}.PHOENIX-NewEra-ACES-COND-2023{3:}.h5"
+        self.full_rname = os.path.join(self.path, self.rname)
+        
+    def check_params(self, parameters):
+        # Bypass the alpha irregularities in the full grid
+        parameters = np.asarray(parameters)
+
+        if len(parameters) != len(self.param_names):
+            raise ValueError(
+                "Length of given parameters ({}) does not match length of grid parameters ({})".format(
+                    len(parameters), len(self.param_names)
+                )
+            )
+
+        for param, params in zip(parameters, self.points):
+            if param not in params:
+                raise ValueError("{} not in the grid points {}".format(param, params))
+        return True
+        
+        
+    def load_flux(self, parameters, header=False, norm=True):
+        self.check_params(parameters)  # Check to make sure that the keys are
+        # allowed and that the values are in the grid
+
+        # Create a list of the parameters to be fed to the format string
+        # optionally replacing arguments using the dictionaries, if the formatting
+        # of a certain parameter is tricky
+        str_parameters = []
+        for param, par_dict in zip(parameters, self.par_dicts):
+            if par_dict is None:
+                str_parameters.append(param)
+            else:
+                str_parameters.append(par_dict[param])
+
+        fname = self.full_rname.format(*str_parameters)
+
+        # Still need to check that file is in the grid, otherwise raise a C.GridError
+        # Read all metadata in from the FITS header, and append to spectrum
+        if not os.path.exists(fname):
+            raise ValueError("{} is not on disk.".format(fname))
+
+        fh5 = h5py.File(fname,'r')
+        # flux = fh5['FLUX'][()]
+        flux = 10.**fh5['PHOENIX_SPECTRUM/flux'][()]
+        fh5.close()
+
+        hdr = {}
+        hdr['FLUX_UNIT'] = 'erg/s/cm^2/cm'
+        
+        
+        # If we want to normalize the spectra, we must do it now since later we won't have the full EM range
+        if norm:
+            flux *= 1e-8  # convert from erg/cm^2/s/cm to erg/cm^2/s/A
+            F_bol = np.trapz(flux, self.wl_full)
+            # F_bol = np.nan_to_num(F_bol, nan=0.0)
+            # assert np.isfinite(F_bol), f'F_bol is not finite: {F_bol}'
+            if not np.isfinite(F_bol):
+                bad_pixels = np.logical_not(np.isfinite(flux))
+                print(f' Invalid pixel fraction in F_bol {np.sum(bad_pixels) / len(flux)}')
+                raise ValueError(' F_bol is not finite: {F_bol} (params = {parameters})')
+            # bolometric luminosity is always 1 L_sun
+            flux *= C.F_sun / F_bol
+            
+        # Add temp, logg, Z, alpha, norm to the metadata
+        hdr["norm"] = norm
+        hdr["air"] = self.air
+
+        if header:
+            return (flux[self.ind], hdr)
+        else:
+            return flux[self.ind]
+        
+class CustomPHOENIXGridInterface(GridInterface):
+    """
+    An Interface to the PHOENIX/Husser synthetic library *without* ISOTOPE.
+
+    Note that the wavelengths in the spectra are in Angstrom and the flux are in :math:`F_\\lambda` as
+    :math:`erg/s/cm^2/cm`
+
+    Parameters
+    ----------
+    path : str or path-like
+        The path of the base of the IsoPHOENIX library without isotopes
+    air : bool, optional
+        Whether the wavelengths are measured in air or not. Default is True
+    wl_range : tuple, optional
+        The (min, max) of the wavelengths, in :math:`\\AA`. Default is (19000, 25000), which is the full wavelength grid of CRIRES+ K2166.
+    """
+    
+    def __init__(self, path, wl_range=(19000, 25000)):
+        import h5py
+
+        super().__init__(
+            name="PHOENIX",
+            param_names=["T", "logg", "Z"],
+            points=[
+                np.arange(2300, 4900+100, 100),
+                np.arange(3.0, 5.5+0.5, 0.5),
+                np.array([-1.0, -0.5, 0.0, 0.5]),
+            ],
+            wave_units="AA",
+            flux_units="erg/s/cm^2/cm",
+            air=False,
+            wl_range=wl_range,
+            path=path,
+        )  
+
+        self.par_dicts = [
+            None,
+            None,
+            {   -1.0: "-1.0",
+                -0.5: "-0.5",
+                0.0: "-0.0",
+                -0.5: "-0.5",
+                0.5: "+0.5",
+            },
+        ]
+
+        wl_filename = os.path.join(self.path, "WAVE_PHOENIX-NewEra-ACES-COND-2023.h5")
+        fh5 = h5py.File(wl_filename,'r')
+        self.wl_full = fh5['WAVE'][()] # [Angstroms]
+        print(f' - Loaded wavelength grid from {wl_filename}')
+        print(f' - Wavelength range: {self.wl_full[0]:.2f} - {self.wl_full[-1]:.2f} A')
+        assert len(self.wl_full) > 0, "No wavelength vector loaded..."
+        
+        self.ind = (self.wl_full >= self.wl_range[0]) & (
+            self.wl_full <= self.wl_range[1]
+        )
+        self.wl = self.wl_full[self.ind]
+        
+        # Fix C_ratio to solar value ~ 12C/13C = 91
+        self.rname = "Z{2:}/lte{0:0>5.0f}-{1:.2f}{2:}.PHOENIX-NewEra-ACES-COND-2023.C_ratio=091.h5"
         self.full_rname = os.path.join(self.path, self.rname)
         
     def check_params(self, parameters):

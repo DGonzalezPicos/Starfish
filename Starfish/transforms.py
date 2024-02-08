@@ -302,3 +302,11 @@ def chebyshev_correct(wave, flux, coeffs):
     scale_wave = wave / wave.max()
     p = chebval(scale_wave, coeffs, tensor=False)
     return flux * p
+
+def rebin(new_wave, wave, flux):
+    """
+    Rebin a spectrum onto a new wavelength grid using linear interpolation
+    """
+    return np.interp(new_wave, wave, flux)
+
+# def spline_model()

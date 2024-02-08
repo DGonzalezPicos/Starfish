@@ -86,3 +86,16 @@ def create_log_lam_grid(dv, start, end):
     p = np.arange(NAXIS1)
     wl = 10 ** (CRVAL1 + CDELT1 * p)
     return {"wl": wl, "CRVAL1": CRVAL1, "CDELT1": CDELT1, "NAXIS1": NAXIS1}
+
+def solve_linear(data, M, Cov_inv):
+    '''Solution to the linear system of equations M^T * cov^-1 * M * f = M^T * cov^-1 * d
+    using scipy.nnls. This is a non-negative least-squares solver.
+    '''
+    from scipy.optimize import nnls
+    # Left-hand side
+    lhs = np.dot(M, Cov_inv.dot(M.T))
+    # Right-hand side
+    rhs = np.dot(M, Cov_inv.dot(data))
+    # Solve
+    f, _ = nnls(lhs, rhs)
+    return f
